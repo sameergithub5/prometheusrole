@@ -1,0 +1,33 @@
+---
+- hosts: restartserver
+  serial: 1
+  tasks:
+  - name: Restart service
+#    shell: 'systemctl status confluent-zookeeper'
+    systemd: 
+      name: "{{service_name}}"
+      state: started
+ #   when : not zkmode.stdout_lines is search('leader')
+
+  - name: debug
+    debug:
+      msg: "running my insideeee task"
+
+  - name: chekc service port now run this task
+    wait_for:
+      port: "{{service_port}}"
+#    when : not zkmode.stdout_lines is search('leader')
+
+
+  - name: Restart service
+#    shell: 'systemctl status confluent-zookeeper'
+    systemd:
+      name: "{{service_name}}"
+      state: started
+#    when :  zkmode.stdout_lines is search('leader')
+
+
+  - name: chekc service port now run this task
+    wait_for:
+      port: "{{service_port}}"
+#    when :  zkmode.stdout_lines is search('leader')

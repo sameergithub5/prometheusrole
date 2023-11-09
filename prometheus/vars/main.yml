@@ -1,0 +1,67 @@
+---
+# vars file for prometheus
+jmxexporter_url_remote: true
+#jmxexporter_jar_path: /opt/prometheus/{{}}.jar
+### Boolean to force update of Prometheus Exporter Agent Jar (must be set to true if jmxexporter_jar_path already exists)
+jmxexporter_jar_url_force: false
+#zookeeper_jmxexporter_enabled: "{{jmxexporter_enabled}}"
+zookeeper_jmxexporter_port: 8770
+### Path on Ansible Controller for Zookeeper jmx config file. Only necessary to set for custom config.
+zookeeper_jmxexporter_config_source_path: zookeeper.yml
+### Destination path for Zookeeper jmx config file
+zookeeper_jmxexporter_config_path: "{{ jmxexporter_config_path | dirname }}/zookeeper.yml"
+
+### Zookeeper Variables ####
+zookeeper_service_name: confluent-zookeeper
+zookeeper_user: root
+zookeeper_group: root
+zookeeper:
+  systemd_override: /etc/systemd/system/{{zookeeper_service_name}}.service.d/override.conf
+
+zookeeper_java_args:
+  - "-javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"
+
+zookeeper_service_environment_overrides:
+  KAFKA_OPTS: "{{ zookeeper_java_args }}"
+zookeeper_server_port: 2181
+
+#########Kafka_broker Variables############3
+#kafka_broker_jmxexporter_enabled: "{{jmxexporter_enabled}}"
+kafka_broker_jmxexporter_port: 8779
+### Path on Ansible Controller for Kafka Broker jmx config file. Only necessary to set for custom config.
+kafka_broker_jmxexporter_config_source_path: kafka_broker.yml
+### Destination path for Kafka Broker jmx config file
+kafka_broker_jmxexporter_config_path: "{{ jmxexporter_config_path | dirname }}/kafka_broker.yml"
+
+### kafka_broker Variables ####
+kafka_broker_service_name: confluent-kafka
+kafka_broker_user: root
+kafka_broker_group: root
+kafka_broker:
+  systemd_override: /etc/systemd/system/{{kafka_broker_service_name}}.service.d/override.conf
+
+kafka_broker_java_args:
+  - "-javaagent:{{jmxexporter_jar_path}}={{kafka_broker_jmxexporter_port}}:{{kafka_broker_jmxexporter_config_path}}"
+
+
+kafka_broker_server_port: 9092
+
+#### schema_registry Variables ########
+schema_registry_jmxexporter_port: 8078
+schema_registry_jmxexporter_config_source_path: schema_registry.yml
+### Destination path for Schema Registry jmx config file
+schema_registry_jmxexporter_config_path: "{{ jmxexporter_config_path | dirname }}/schema_registry.yml"
+
+
+### kafka_broker Variables ####
+schema_registry_service_name: confluent-schema-registry
+schema_registry_user: root
+schema_registry_group: root
+schema_registry:
+  systemd_override: /etc/systemd/system/{{schema_registry_service_name}}.service.d/override.conf
+
+
+schema_registry_java_args:
+  - "-javaagent:{{jmxexporter_jar_path}}={{schema_registry_jmxexporter_port}}:{{schema_registry_jmxexporter_config_path}}"
+
+schema_registry_server_port: 8088

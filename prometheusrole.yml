@@ -1,0 +1,12 @@
+---
+ - name: Deploy prometheus
+   hosts: all
+   vars:
+     zookeeper_prometheus_enable: true
+     kafka_broker_prometheus_enable: false
+     schema_registry_prometheus_enable: true
+     kafka_broker_restart: true
+     zookeeper_restart: true
+     schema_registry_restart: true
+   roles:
+    - { role: /Users/sameer_modak/ansibledemo/prometheus }

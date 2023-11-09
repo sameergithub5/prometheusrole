@@ -1,0 +1,146 @@
+---
+# tasks file for prometheus
+#- name: Schema_registry
+#  hosts: schema_registry
+  - name: Create Prometheus install  and config directory
+    file:
+      path: "{{ item }}"
+      state: directory
+      mode: 0755
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+    loop:
+    - "{{ jmxexporter_jar_path | dirname }}"
+    - "{{ jmxexporter_config_path }}"
+  
+  - name: Download Prometheus JMX Exporter Jar
+    get_url:
+      url: "{{ jmxexporter_jar_url }}"
+#     dest: "{{ jmxexporter_jar_path }}"
+      dest: '/tmp/'
+#     force: "{{ jmxexporter_jar_url_force }}"
+      mode: 0755
+#    owner: "{{schema_registry_user}}"
+#    group: "{{schema_registry_group}}"
+    delegate_to: localhost
+    register: prometheus_download_result
+    until: prometheus_download_result is success
+    retries: 5
+    delay: 5
+
+  - name: Deploy JMX JAR on server 
+    copy:
+      src: "/tmp/jmx_prometheus_javaagent-{{jmxexporter_version}}.jar"
+      dest: "{{jmxexporter_jar_path}}"
+      mode: 0640
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+
+  - name: Deploy schema_registry JMX Exporter Config File
+    copy:
+      src: "{{schema_registry_jmxexporter_config_source_path}}"
+      dest: "{{schema_registry_jmxexporter_config_path}}"
+      mode: 0640
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+    tags: 
+    - configuration
+    
+  - name: Create schema_registry Service Override Directory
+    file:
+      path: "{{schema_registry.systemd_override | dirname}}" 
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+      state: directory
+      mode: 0640
+
+  - name: Check if schema_registry overrride.conf present or not 
+    stat:
+      path: "{{schema_registry.systemd_override}}"
+    register: sr_ovride
+
+  - name: Write schema_registry Service Overrides
+    template: 
+      src: schema_registry_override.conf.j2
+      dest: "{{schema_registry.systemd_override}}"
+      mode: 0640
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+    when: not sr_ovride.stat.exists 
+    register: fileoverridesr
+
+  - name: Test if prometheus conf present
+    shell: 'grep -c "prometheus" {{schema_registry.systemd_override}} || true'
+    register: promconfcheck_schema
+    when: sr_ovride.stat.exists
+
+  - name:  Add prometheus javagent config line in existing override.conf
+    lineinfile:
+      path: "{{schema_registry.systemd_override}}"
+      regexp: "{{ item.reg }}"
+      line: "{{ item.line }}"
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+      backrefs: yes
+      backup: yes
+    loop:
+    - { reg: '^(.*SCHEMA_REGISTRY_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{schema_registry_jmxexporter_port}}:{{schema_registry_jmxexporter_config_path}}"' }
+    - { reg: '^(.*KAFKA_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{schema_registry_jmxexporter_port}}:{{schema_registry_jmxexporter_config_path}}"' }
+    when: sr_ovride.stat.exists == true and promconfcheck_schema.stdout == "0"
+    register: schemalineadd
+
+  - name: Test if prometheus conf present
+    shell: 'grep -c "prometheus" {{zookeeper.systemd_override}} || true'
+    register: promconfcheck_schema1
+    when: sr_ovride.stat.exists
+    
+  - name: Add prometheus javagent config line in existing override.conf
+    lineinfile:
+      path: "{{zookeeper.systemd_override}}"
+      line: 'Environment="SCHEMA_REGISTRY_OPTS=-javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"'
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+      backup: yes
+    when: sr_ovride.stat.exists == true and promconfcheck_schema1.stdout == "0"
+    register: schemalineadd1
+
+  - name: Systemd reload
+    systemd:
+      daemon_reload: true 
+
+  - name: Set service name as a fact
+    set_fact: 
+      service_name: "{{ zookeeper_service_name }}"
+
+  - name: Add host to import Restart check playbook
+    add_host:
+      name: '{{ item }}'
+      groups: restartserver
+    loop: "{{ ansible_play_hosts }}"
+    
+
+#- name: Import service check playbook
+#  import_playbook: Restartandcheck.yml  
+ 
+
+#  - name: Restart controller schema registry
+#    throttle: 1
+#    any_errors_fatal: true
+#    shell: |
+#     systemctl status {{schema_registry_service_name}}  
+#     timeout -k 3 1m sh -c 'until nc -zv localhost {{schema_registry_server_port}}; do sleep 1; done'
+#     nc -zv localhost {{schema_registry_server_port}}
+#    when: 
+#    - schema_registry_restart|bool
+##    - schemalineadd.changed or schemalineadd1.changed or fileoverridesr.changed
+#    register: command_result
+#    failed_when: command_result.rc !== 0  
+#
+#  - name: Debug variable
+#    debug: var=command_result
+#
+#  - name: Check if schema_registry_server is ready to accept the connection
+#    wait_for:
+#      port: "{{schema_registry_server_port}}"
+#      state: started
+

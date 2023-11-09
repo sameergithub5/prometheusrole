@@ -1,0 +1,146 @@
+---
+# tasks file for prometheus
+
+- name: Create Prometheus install  and config directory
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{zookeeper_user}}"
+    group: "{{zookeeper_group}}"
+    mode: 0755
+  loop:
+  - '{{ jmxexporter_jar_path | dirname }}'
+  - '{{ jmxexporter_config_path }}'
+
+- name: Download Prometheus JMX Exporter Jar
+  get_url:
+    url: "{{ jmxexporter_jar_url }}"
+#    dest: "{{ jmxexporter_jar_path }}"
+    dest: '/tmp/'
+#    force: "{{ jmxexporter_jar_url_force }}"
+    mode: 0755 
+#    owner: "{{zookeeper_user}}"
+#    group: "{{zookeeper_group}}"
+  delegate_to: localhost
+  register: prometheus_download_result
+  until: prometheus_download_result is success
+  retries: 5
+  delay: 5
+
+- name: Deploy prometheus JAR on server 
+  copy:
+    src: "/tmp/jmx_prometheus_javaagent-{{jmxexporter_version}}.jar"
+    dest: "{{jmxexporter_jar_path}}"
+    mode: 0755
+    owner: "{{zookeeper_user}}"
+    group: "{{zookeeper_group}}"
+
+
+- name: Deploy zookeeper JMX Exporter Config File
+  copy:
+    src: "{{zookeeper_jmxexporter_config_source_path}}"
+    dest: "{{zookeeper_jmxexporter_config_path}}"
+    mode: 0755
+    owner: "{{zookeeper_user}}"
+    group: "{{zookeeper_group}}"
+  tags: 
+    - configuration
+    
+- name: Create zookeeper Service Override Directory
+  file:
+    path: "{{zookeeper.systemd_override | dirname}}" 
+    owner: "{{zookeeper_user}}"
+    group: "{{zookeeper_group}}"
+    state: directory
+    mode: 0640
+  tags:
+    - systemd
+    - privileged
+
+- name: check if zookeeper overrride.conf present or not 
+  stat:
+    path: "{{zookeeper.systemd_override}}"
+  register: st
+
+- name: Write zookeeper Service Overrides
+  template: 
+    src: zk_override.conf.j2
+    dest: "{{zookeeper.systemd_override}}"
+    mode: 0640
+    owner: root
+    group: root
+  when: not st.stat.exists 
+  register: fileoverridezk
+
+- name: Test if prometheus conf present
+  shell: 'grep -c "prometheus" {{zookeeper.systemd_override}} || true'
+  register: promconfcheck
+  when: st.stat.exists
+
+- name:  Add prometheus javagent config line in existing override.conf 
+  lineinfile:
+    path: "{{zookeeper.systemd_override}}"
+    regexp: "{{ item.reg }}"
+    line: "{{ item.line }}"
+    backrefs: yes
+    backup: yes
+  loop:
+  - { reg: '^(.*KAFKA_JMX_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"' }
+  - { reg: '^(.*KAFKA_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"' }
+  - { reg: '^(.jmx_exporter.*)', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"' }
+  when: st.stat.exists == true and promconfcheck.stdout == "0"
+  register: jmxadd
+
+- name: Test if prometheus conf present
+  shell: 'grep -c "prometheus" {{zookeeper.systemd_override}} || true'
+  when: st.stat.exists
+  register: promconfcheck1
+
+- lineinfile:
+    path: "{{zookeeper.systemd_override}}"
+    line: 'Environment="KAFKA_JMX_OPTS=-javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"'
+    backup: yes
+  when: st.stat.exists == true and promconfcheck1.stdout == "0"
+  register: jmxadd1
+
+- name: Systemd reload
+  systemd:
+    daemon_reload: true 
+
+- name: Check who is existing zokeeper leader
+  shell: 'echo stat | nc localhost "{{hostvars[inventory_hostname].zk_port}}" | grep Mode'
+  register: zkmode
+
+- name: Set service name as a fact 
+  set_fact: 
+    service_name: "{{ zookeeper_service_name }}"
+
+- name: Restart playbook
+  import_playbook: Restart.yml
+
+
+- name: Restart zookeeper followers
+  throttle: 1
+  any_errors_fatal: true
+  shell: |
+     systemctl restart {{zookeeper_service_name}}  
+     timeout -k 3 1m sh -c 'until nc -zv localhost {{hostvars[inventory_hostname].zk_port}}; do sleep 1; done'
+  when:
+  - not zkmode.stdout_lines is search('leader')
+  - kafka_broker_restart|bool
+  - jmxadd.changed or jmxadd1.changed or fileoverridezk.changed
+
+- name: As all zookeeper followers are up now repeat this task to  restart systemd for leader
+  any_errors_fatal: true
+  shell: |
+     systemctl restart {{zookeeper_service_name}}  
+     timeout -k 3 1m sh -c 'until nc -zv localhost {{hostvars[inventory_hostname].zk_port}}; do sleep 1; done'
+  when: 
+  - zkmode.stdout_lines is search('leader')
+  - kafka_broker_restart|bool
+  - jmxadd.changed or  jmxadd1.changed or fileoverridezk.changed
+
+- name: check if zookeeper is ready to accept the connection  
+  wait_for:
+    port: "{{zookeeper_server_port}}"
+    state: started 

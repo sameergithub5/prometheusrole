@@ -1,0 +1,9 @@
+---
+- include_tasks: zookeeper_prometheus.yml
+  when: zookeeper_prometheus_enable|bool is true and  inventory_hostname in groups["zookeeper"]
+
+- include_tasks: kafka_broker_prometheus.yml
+  when: kafka_broker_prometheus_enable|bool is true and  inventory_hostname in groups["kafka_broker"]
+  
+- include_tasks: schema_registry_prometheus.yml
+  when: schema_registry_prometheus_enable|bool is true and inventory_hostname in groups["schema_registry"] 
