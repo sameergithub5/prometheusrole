@@ -1,0 +1,11 @@
+- name: Restart schema_registry
+  hosts: schema_registry
+  serial: 1
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - import_role:
+        name: prometheusjmx
+        tasks_from: schema_registry_Restartcheck.yml
+      when:
+      - schema_registry_prometheus_enable| bool

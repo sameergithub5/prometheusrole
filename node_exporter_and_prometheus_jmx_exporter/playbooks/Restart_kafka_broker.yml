@@ -1,0 +1,24 @@
+- name: Restart kafka broker follower
+  hosts: kafka_broker_follower
+  serial: 1
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - import_role:
+        name: prometheusjmx
+        tasks_from: kafka_broker_Restartcheck.yml
+      when:
+      - kafka_broker_prometheus_enable| bool
+
+- name: Restart kafka broker leader
+  hosts: kafka_broker_controller
+  serial: 1
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - import_role:
+        name: prometheusjmx
+        tasks_from: kafka_broker_Restartcheck.yml
+      when:
+      - kafka_broker_prometheus_enable| bool
+

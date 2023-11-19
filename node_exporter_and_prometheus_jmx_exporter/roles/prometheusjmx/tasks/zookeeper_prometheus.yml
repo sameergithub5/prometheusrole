@@ -1,0 +1,95 @@
+---
+# tasks file for prometheus
+
+- name: Deploy zookeeper JMX Exporter Config File
+  copy:
+    src: "{{zookeeper_jmxexporter_config_source_path}}"
+    dest: "{{zookeeper_jmxexporter_config_path}}"
+    mode: 0755
+    owner: "{{zookeeper_user}}"
+    group: "{{zookeeper_group}}"
+  tags: 
+    - configuration
+    
+- name: Create zookeeper Service Override Directory
+  file:
+    path: "{{zookeeper.systemd_override | dirname}}" 
+    owner: "{{zookeeper_user}}"
+    group: "{{zookeeper_group}}"
+    state: directory
+    mode: 0640
+  tags:
+    - systemd
+    - privileged
+
+- name: check if zookeeper overrride.conf present or not 
+  stat:
+    path: "{{zookeeper.systemd_override}}"
+  register: st
+
+- name: Write zookeeper Service Overrides
+  template: 
+    src: zk_override.conf.j2
+    dest: "{{zookeeper.systemd_override}}"
+    mode: 0640
+    owner: root
+    group: root
+  when: not st.stat.exists 
+  register: fileoverridezk
+
+- name: Test if prometheus conf present
+  shell: 'grep -c "prometheus" {{zookeeper.systemd_override}} || true'
+  changed_when: false
+  register: promconfcheck
+  when: st.stat.exists
+
+- name:  Add prometheus javagent config line in existing override.conf 
+  lineinfile:
+    path: "{{zookeeper.systemd_override}}"
+    regexp: "{{ item.reg }}"
+    line: "{{ item.line }}"
+    backrefs: yes
+    backup: yes
+  loop:
+  - { reg: '^(.*KAFKA_JMX_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"' }
+  - { reg: '^(.*KAFKA_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"' }
+  - { reg: '^(.jmx_exporter.*)', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"' }
+  when: st.stat.exists == true and promconfcheck.stdout == "0"
+  register: jmxadd
+
+- name: Test if prometheus conf present
+  shell: 'grep -c "prometheus" {{zookeeper.systemd_override}} || true'
+  changed_when: false
+  when: st.stat.exists
+  register: promconfcheck1
+
+- lineinfile:
+    path: "{{zookeeper.systemd_override}}"
+    line: 'Environment="KAFKA_JMX_OPTS=-javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"'
+    backup: yes
+  when: st.stat.exists == true and promconfcheck1.stdout == "0"
+  register: jmxadd1
+
+- name: Systemd reload
+  systemd:
+    daemon_reload: true 
+
+- name: Check who is existing zokeeper leader
+  shell: '{{kafka_run_class_path}}/kafka-run-class org.apache.zookeeper.client.FourLetterWordMain localhost 2181 srvr | grep Mode'
+  register: zkmode
+  changed_when: false
+
+
+- name: "Group Hosts by Zookeeper Mode: Follower or Leader"
+  group_by:
+    key: "{{ 'zookeeper_follower' if 'follower' in zkmode.stdout else 'zookeeper_leader' }}"
+  changed_when: false
+
+
+
+- name: Set zookeeper run value
+  set_fact: 
+   zookeeper_config_done: true
+  when: jmxadd.changed or  jmxadd1.changed or fileoverridezk.changed
+    
+

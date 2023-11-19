@@ -1,0 +1,23 @@
+---
+# defaults file for prometheus
+### Version of JmxExporter Agent Jar to Donwload
+jmxexporter_version: 0.19.0
+
+jmxexporter_url_remote: true
+
+### Full URL used for Prometheus Exporter Jar Download. When `jolokia_url_remote=false` this represents the path on Ansible control host.
+jmxexporter_jar_url: "https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/{{jmxexporter_version}}/jmx_prometheus_javaagent-{{jmxexporter_version}}.jar"
+
+### Full path to download the Prometheus Exporter Agent Jar
+jmxexporter_jar_path: /opt/prometheus/jmx_prometheus_{{ jmxexporter_version }}.jar
+
+### Config path 
+jmxexporter_config_path: "/etc/jmx_prometheus/"
+
+##run class path
+kafka_run_class_path: "/apps/confluent-5.1.0/bin/"
+#kafka_run_class_path: "/usr/bin/"
+
+##user for all services 
+#user: cp-kafka
+#group: confluent

@@ -1,0 +1,23 @@
+- name: Restart zookeeper follower
+  hosts: zookeeper_follower
+  serial: 1
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - import_role:
+        name: prometheusjmx
+        tasks_from: zookeeper_Restartcheck.yml
+      when:
+      - zookeeper_prometheus_enable| bool
+
+- name: Restart zookeeper leader
+  hosts: zookeeper_leader
+  serial: 1
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - import_role:
+        name: prometheusjmx
+        tasks_from: zookeeper_Restartcheck.yml
+      when:
+      - zookeeper_prometheus_enable| bool

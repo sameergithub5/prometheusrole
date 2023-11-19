@@ -1,0 +1,80 @@
+---
+# tasks file for prometheus
+  - name: Deploy schema_registry JMX Exporter Config File
+    copy:
+      src: "{{schema_registry_jmxexporter_config_source_path}}"
+      dest: "{{schema_registry_jmxexporter_config_path}}"
+      mode: 0755
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+    tags: 
+    - configuration
+    
+  - name: Create schema_registry Service Override Directory
+    file:
+      path: "{{schema_registry.systemd_override | dirname}}" 
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+      state: directory
+      mode: 0640
+
+  - name: Check if schema_registry overrride.conf present or not 
+    stat:
+      path: "{{schema_registry.systemd_override}}"
+    register: sr_ovride
+
+  - name: Write schema_registry Service Overrides
+    template: 
+      src: schema_registry_override.conf.j2
+      dest: "{{schema_registry.systemd_override}}"
+      mode: 0640
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+    when: not sr_ovride.stat.exists 
+    register: fileoverridesr
+
+  - name: Test if prometheus conf present
+    shell: 'grep -c "prometheus" {{schema_registry.systemd_override}} || true'
+    changed_when: false
+    register: promconfcheck_schema
+    when: sr_ovride.stat.exists
+
+  - name:  Add prometheus javagent config line in existing override.conf
+    lineinfile:
+      path: "{{schema_registry.systemd_override}}"
+      regexp: "{{ item.reg }}"
+      line: "{{ item.line }}"
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+      backrefs: yes
+      backup: yes
+    loop:
+    - { reg: '^(.*SCHEMA_REGISTRY_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{schema_registry_jmxexporter_port}}:{{schema_registry_jmxexporter_config_path}}"' }
+    - { reg: '^(.*KAFKA_OPTS=.*)"$', line: '\1 -javaagent:{{jmxexporter_jar_path}}={{schema_registry_jmxexporter_port}}:{{schema_registry_jmxexporter_config_path}}"' }
+    when: sr_ovride.stat.exists == true and promconfcheck_schema.stdout == "0"
+    register: schemalineadd
+
+  - name: Test if prometheus conf present
+    shell: 'grep -c "prometheus" {{zookeeper.systemd_override}} || true'
+    register: promconfcheck_schema1
+    when: sr_ovride.stat.exists
+    changed_when: false
+    
+  - name: Add prometheus javagent config line in existing override.conf
+    lineinfile:
+      path: "{{zookeeper.systemd_override}}"
+      line: 'Environment="SCHEMA_REGISTRY_OPTS=-javaagent:{{jmxexporter_jar_path}}={{zookeeper_jmxexporter_port}}:{{zookeeper_jmxexporter_config_path}}"'
+      owner: "{{schema_registry_user}}"
+      group: "{{schema_registry_group}}"
+      backup: yes
+    when: sr_ovride.stat.exists == true and promconfcheck_schema1.stdout == "0"
+    register: schemalineadd1
+
+  - name: Systemd reload
+    systemd:
+      daemon_reload: true 
+
+  - name: Set service name as a fact
+    set_fact: 
+      schema_registry_config_done: true
+    when: schemalineadd.changed or schemalineadd1.changed or fileoverridesr.changed

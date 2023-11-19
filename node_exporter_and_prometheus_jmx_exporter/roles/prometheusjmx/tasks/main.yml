@@ -1,0 +1,54 @@
+---
+  - name: Create Prometheus install  and config directory
+    file:
+      path: "{{ item }}"
+      state: directory
+      mode: 0755
+      owner: "{{user}}"
+      group: "{{group}}"
+    loop:
+    - "{{ jmxexporter_jar_path | dirname }}"
+    - "{{ jmxexporter_config_path }}"
+
+  - name: Download Prometheus JMX Exporter Jar
+    get_url:
+      url: "{{ jmxexporter_jar_url }}"
+#     dest: "{{ jmxexporter_jar_path }}"
+      dest: '/tmp/'
+#     force: "{{ jmxexporter_jar_url_force }}"
+      mode: 0755
+#    owner: "{{schema_registry_user}}"
+#    group: "{{schema_registry_group}}"
+    delegate_to: localhost
+    register: prometheus_download_result
+    until: prometheus_download_result is success
+    retries: 5
+    delay: 5
+
+  - name: Deploy JMX JAR on server
+    copy:
+      src: "/tmp/jmx_prometheus_javaagent-{{jmxexporter_version}}.jar"
+      dest: "{{jmxexporter_jar_path}}"
+      mode: 0640
+      owner: "{{user}}"
+      group: "{{group}}"
+   
+  - name: Set completion variable
+    set_fact: 
+      zookeeper_config_done: false
+      kafka_broker_config_done: false
+      schema_registry_config_done: false
+
+  - name: Including zookeeper task.
+    include_tasks: zookeeper_prometheus.yml
+    when: zookeeper_prometheus_enable|bool and inventory_hostname in groups["zookeeper"]
+    
+  - name: Including kafka_broker task.
+    include_tasks: kafka_broker_prometheus.yml
+    when: kafka_broker_prometheus_enable|bool  and inventory_hostname in groups["kafka_broker"]
+
+  - name: Including schema_registry task.
+    include_tasks: schema_registry_prometheus.yml
+    when: schema_registry_prometheus_enable|bool and inventory_hostname in groups["schema_registry"]
+
+

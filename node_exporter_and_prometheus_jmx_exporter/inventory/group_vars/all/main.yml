@@ -1,0 +1,9 @@
+---
+zookeeper_prometheus_enable: true
+kafka_broker_prometheus_enable: true
+schema_registry_prometheus_enable: true
+kafka_broker_restart: true
+zookeeper_restart: true
+schema_registry_restart: true
+user: root
+group: root

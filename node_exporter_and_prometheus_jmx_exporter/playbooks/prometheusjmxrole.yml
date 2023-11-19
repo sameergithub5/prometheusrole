@@ -1,0 +1,13 @@
+- name: Deploy  jmx_exporter
+  hosts: all
+  tasks:
+  - name: Importing jmx prometheus role
+    import_role:
+      name: prometheusjmx
+
+- import_playbook: Restart_zookeeper.yml
+
+- import_playbook: Restart_kafka_broker.yml
+
+- import_playbook: Restart_schema_registry.yml
+

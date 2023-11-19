@@ -1,0 +1,2 @@
+[Service]
+Environment="KAFKA_OPTS=-javaagent:{{jmxexporter_jar_path}}={{kafka_broker_jmxexporter_port}}:{{kafka_broker_jmxexporter_config_path}}"

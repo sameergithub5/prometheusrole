@@ -1,0 +1,15 @@
+---
+  - name: "Restart {{kafka_broker_service_name}} service"
+    systemd:
+      daemon_reload: true
+      name: "{{kafka_broker_service_name}}"
+      state: restarted
+
+  - name: "Check if kafka broker port {{kafka_broker_server_port}} is up"
+    wait_for:
+      port: "{{kafka_broker_server_port}}"
+      host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+      connect_timeout: 10
+      delay: 2
+      timeout: 60
+  
