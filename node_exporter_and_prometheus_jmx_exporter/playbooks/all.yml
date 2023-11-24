@@ -10,9 +10,10 @@
     loop_control:
         loop_var: roleitem
 
-- import_playbook: Restart_zookeeper.yml
+# Not required anymore - restart task add to zookeeper role
+# - import_playbook: Restart_zookeeper.yml
 
-- import_playbook: Restart_kafka_broker.yml
+# to be fixed as per zookeeper role
+# - import_playbook: Restart_kafka_broker.yml
 
-- import_playbook: Restart_schema_registry.yml
-       
+# - import_playbook: Restart_schema_registry.yml

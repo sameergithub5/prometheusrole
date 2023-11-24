@@ -91,5 +91,25 @@
   set_fact: 
    zookeeper_config_done: true
   when: jmxadd.changed or  jmxadd1.changed or fileoverridezk.changed
-    
 
+
+- name: "Restart {{ zookeeper_service_name }} service"
+  systemd:
+    daemon_reload: true
+    name: "{{zookeeper_service_name}}"
+    state: restarted
+  delegate_to: "{{ item }}"
+  loop:
+    - zookeeper_follower
+    - zookeeper_leader
+
+- name: "Check if zookeeper port {{ zookeeper_server_port}} is up"
+  wait_for:
+    port: "{{zookeeper_server_port}}"
+    connect_timeout: 5
+    delay: 1
+    timeout: 30
+  delegate_to: "{{ item }}"
+  loop:
+    - zookeeper_follower
+    - zookeeper_leader
